@@ -81,7 +81,7 @@ getFWSCadastral <- function(refugeName, writeResult=FALSE, resultsFolder=NULL){
   }
   else{
     if(writeResult == TRUE){
-      writeFWSCadastral(dat, refugeName,resultsFolder)
+      writeFWSCadastral_rough(dat, refugeName,resultsFolder)
     }
     return(dat)
   }
@@ -152,13 +152,38 @@ writeFWSCadastral_rough <- function(dat, refugeName, resultsFolder){
     print("Please provide a path to folder in which to store results")
     return(dat)
   }
-  else if(!dir.exists(resultsFolder)) {
-    dir.create(file.path(resultsFolder))
+  #if dir exists and has write permission
+  else if(dir.exists(resultsFolder)) {
+    if(file.access(resultsFolder,2) ==0){
+      st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp", 
+                            resultsFolder, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)   
+    }
+    else{
+      print("This program does not have permission to write to that directory")
+    }
+    #dir.create(file.path(resultsFolder))
   }
+  else{
+    tryCatch({
+      dir.create(file.path(resultsFolder))
+    },
+    error = function(e){
+      #print(e)
+      print("unknown error occurred")
+      return()
+    },
+    warning = function(w){
+      if(isWriteWarning(w)){                                                                   
+        print(sprintf("Cannot create/access '%s', please check provided path", resultsFolder)) 
+        stop()
+      }
+    })
+  }
+  print("heyyyyyy")
   st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp", 
                         resultsFolder, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)        
   
-}
+}#writeFWSCadastral_Rough
 
 
 
