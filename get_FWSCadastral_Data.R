@@ -8,11 +8,12 @@ library(mapview)
 library(stringr)
 library(mapview)
 
-#' Remove spaces from refuge name prior to writing output files
+#' Abbreviates refuge name
 #' 
 #' @param refugeName: char, refuge nam
 createNameAbbrev <- function(refugeName){
-  dat <- str_replace_all(str_to_title(refugeName), pattern=" ", repl="")
+  return(str_replace_all(str_to_title(refugeName), pattern=" ", repl=""))
+  #dat <- str_replace_all(str_to_title(refugeName), pattern=" ", repl="")
 }
 
 
@@ -32,36 +33,46 @@ isWriteWarning <- function(warning){
 #' @param dat: sf, refuge data obtained from FWS Rest API
 #' @param refugeName: char, Name of given refuge
 #' @param resultsFolder: char, Path to a location in which to store refuge data
-#' TODO: Find more direct way to handle generated from call warnings/errors to st_write() 
-##' Cleaner way to determine if write was successful
-##' Eliminate redundant calls to st_write()
-##' Further testing regarding provided file paths
+#' TODO: Add code to catch errors when trying to create result folder
 writeFWSCadastral <- function(dat, refugeName, resultsFolder){
   refugeAbbrev <- createNameAbbrev(refugeName)
-    #Attempt to write to provided path
+  resultsPath <- sprintf("%s/%s",resultsFolder,refugeName)
+  if(is.null(resultsFolder)){
+    print("Please provide a path to folder in which to store results")
+    return(dat)
+  }
+  #if dir exists
+  else if(dir.exists(resultsFolder)) {
+    #if R has write permissions
+    if(file.access(resultsFolder,2) ==0){
+      dir.create(file.path(resultsPath))
+      st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp", 
+                            resultsPath, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)   
+    }
+    else{
+      print(sprintf("This program does not have permission to write to %s",resultsFolder))
+    }
+  }
+  #if dir doesn't exist
+  else{
     tryCatch({
-      if(is.null(resultsFolder)){
-        print("Please provide a path to folder in which to store results")
-        return()
-      }
-      else if(!dir.exists(resultsFolder)) {
-        dir.create(file.path(resultsFolder))
-      }
-      st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp",   #Issue *1, this call alwas generates warnings
-                            resultsFolder, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)        
+      dir.create(file.path(resultsFolder))
+      dir.create(file.path(resultsPath))
     },
-    #Catch warnings, use to determine if output files can be written
-    warning = function(w){    #issue *1 Therefor this section will always fire                                                          
-      if(isWriteWarning(w)){                                                                   
-        print(sprintf("Cannot create/access '%s', please check provided path", resultsFolder)) 
-      }
-      else{
-        st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp", #issue *1 and this call still produces warnings 
-                              resultsFolder, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)
+    error = function(e){
+      do.call(return, list(NULL),envir = sys.frame(-4)) #return to getFWSCadastral()
+    },
+    warning = function(w){
+      if(isWriteWarning(w)){ 
+        print(sprintf("Cannot create/access '%s', please check provided path", resultsFolder))
+        do.call(return, list(NULL),envir = sys.frame(-4))
       }
     })
-    
+    st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp", 
+                          resultsPath, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)  
+  }
 }
+
 
 #' Obtain refuge data from FWS Rest API
 #' 
@@ -81,7 +92,7 @@ getFWSCadastral <- function(refugeName, writeResult=FALSE, resultsFolder=NULL){
   }
   else{
     if(writeResult == TRUE){
-      writeFWSCadastral_rough(dat, refugeName,resultsFolder)
+      writeFWSCadastral(dat, refugeName,resultsFolder)
     }
     return(dat)
   }
@@ -89,7 +100,7 @@ getFWSCadastral <- function(refugeName, writeResult=FALSE, resultsFolder=NULL){
 
 dat <- getFWSCadastral("TIJUANA SLOUGH NATIONAL WILDLIFE REFUGE",writeResult = TRUE, resultsFolder = "G:/fake_path")
 dat1 <- getFWSCadastral("MERRITT ISLAND NATIONAL WILDLIFE REFUGE")
-dat2 <- getFWSCadastral("SANDY POINT NATIONAL WILDLIFE REFUGE", writeResult = TRUE, resultsFolder = "result")
+dat2 <- getFWSCadastral("CAMERON PRAIRIE NATIONAL WILDLIFE REFUGE", writeResult = TRUE, resultsFolder = "result")
 
 
 
@@ -146,44 +157,44 @@ cad_data <- getFWSCadastral_old(dsn, layer_name, refuge_name, writeResult = TRUE
 
 
 
-writeFWSCadastral_rough <- function(dat, refugeName, resultsFolder){
+
+
+#' Write refuge data to a given location
+#' 
+#' @param dat: sf, refuge data obtained from FWS Rest API
+#' @param refugeName: char, Name of given refuge
+#' @param resultsFolder: char, Path to a location in which to store refuge data
+#' TODO: Find more direct way to handle generated from call warnings/errors to st_write() 
+##' Cleaner way to determine if write was successful
+##' Eliminate redundant calls to st_write()
+##' Further testing regarding provided file paths
+writeFWSCadastral_old <- function(dat, refugeName, resultsFolder){
   refugeAbbrev <- createNameAbbrev(refugeName)
-  if(is.null(resultsFolder)){
-    print("Please provide a path to folder in which to store results")
-    return(dat)
-  }
-  #if dir exists and has write permission
-  else if(dir.exists(resultsFolder)) {
-    if(file.access(resultsFolder,2) ==0){
-      st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp", 
-                            resultsFolder, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)   
+  #Attempt to write to provided path
+  tryCatch({
+    if(is.null(resultsFolder)){
+      print("Please provide a path to folder in which to store results")
+      return()
+    }
+    else if(!dir.exists(resultsFolder)) {
+      dir.create(file.path(resultsFolder))
+    }
+    st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp",   #Issue *1, this call alwas generates warnings
+                          resultsFolder, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)        
+  },
+  #Catch warnings, use to determine if output files can be written
+  warning = function(w){    #issue *1 Therefor this section will always fire                                                          
+    if(isWriteWarning(w)){                                                                   
+      print(sprintf("Cannot create/access '%s', please check provided path", resultsFolder)) 
     }
     else{
-      print("This program does not have permission to write to that directory")
+      st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp", #issue *1 and this call still produces warnings 
+                            resultsFolder, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)
     }
-    #dir.create(file.path(resultsFolder))
-  }
-  else{
-    tryCatch({
-      dir.create(file.path(resultsFolder))
-    },
-    error = function(e){
-      #print(e)
-      print("unknown error occurred")
-      return()
-    },
-    warning = function(w){
-      if(isWriteWarning(w)){                                                                   
-        print(sprintf("Cannot create/access '%s', please check provided path", resultsFolder)) 
-        stop()
-      }
-    })
-  }
-  print("heyyyyyy")
-  st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp", 
-                        resultsFolder, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)        
+  })
   
-}#writeFWSCadastral_Rough
+}
+
 
 
 
