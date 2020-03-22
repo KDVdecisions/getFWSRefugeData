@@ -7,6 +7,7 @@ library(urltools)
 library(mapview)
 library(stringr)
 library(mapview)
+library(leaflet)
 
 #' Abbreviates refuge name
 #' 
@@ -96,15 +97,6 @@ getFWSCadastral <- function(refugeName, writeResult=FALSE, resultsFolder=NULL){
   
 }#getFWSCadastral
 
-#troubleshooting function
-checkPlot <- function(huc, focalSf){
-  leaflet() %>%
-    addProviderTiles("Esri.WorldStreetMap", group="Map") %>%
-    addProviderTiles("Esri.WorldImagery", group="Image") %>%
-    addPolygons(data = as_Spatial(focalSf), stroke=F,fillColor="cyan",fillOpacity=0.7, group="Refuge") %>%
-    addPolygons(data=as_Spatial(huc), fill=F, color="goldenrod",
-                opacity=0.8, group="HUC")
-}
 
 #troubleshooting function
 writeData <- function(huc,focalSf){
@@ -120,7 +112,7 @@ writeData <- function(huc,focalSf){
 #' TODO: Lot's of testing, attempt to find way to query API with polygon rather than
 #'       bounding box to remove need to filter out excess HUCs
 getHucs <- function(hucLayer, focalSf){
-  baseUrl <- read_lines("Base_URL.txt")
+  baseUrl <- readLines("Base_URL.txt")
   bbox <- toString(st_bbox(focalSf))
   epsg <- st_crs(focalSf)$epsg
   
@@ -145,9 +137,26 @@ getHucs <- function(hucLayer, focalSf){
 
 
 
+checkHucs <- function(refugeName){
+  focalSf <- getFWSCadastral(refugeName)
+  huc8 <- getHucs("WBDHU8", focalSf)
+  huc10 <- getHucs("WBDHU10", focalSf)
+  
+  leaflet() %>%
+    addProviderTiles("Esri.WorldStreetMap", group="Map") %>%
+    addProviderTiles("Esri.WorldImagery", group="Image") %>%
+    addPolygons(data = as_Spatial(focalSf), stroke=F,fillColor="cyan",fillOpacity=0.7, group="Refuge") %>%
+    addPolygons(data=as_Spatial(huc8), fill=F, color="goldenrod",
+                opacity=0.8, group="HUC") %>%
+    addPolygons(data=as_Spatial(huc10), fill=F, color="red",
+                opacity=0.8, group="HUC")
+}
 
-returnHuc <- getHucs("WBDHU8", dat1)
-checkPlot(returnHuc, dat1)
+
+
+checkHucs("SULLYS HILL NATIONAL GAME PRESERVE")
+
+
 
 dat1 <- getFWSCadastral("IRON RIVER NATIONAL FISH HATCHERY")
 dat2 <- getFWSCadastral("CAMERON PRAIRIE NATIONAL WILDLIFE REFUGE")
