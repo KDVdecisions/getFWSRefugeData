@@ -109,8 +109,8 @@ getFWSCadastral <- function(refugeName, writeResult=FALSE, resultsFolder=NULL){
     return(NULL)
   }
   baseUrl <- readLines("Data/base_URL.txt")
-  url <- param_set(baseUrl[1], key = "where", value = sprintf("ORGNAME+LIKE+'%s%%25'",gsub(" ","+",refugeName))) #%>%
-    #param_set(key = "outSR", value = 26910)
+  url <- param_set(baseUrl[1], key = "where", value = sprintf("ORGNAME+LIKE+'%s%%25'",gsub(" ","+",refugeName))) %>%
+    param_set(key = "outSR", value = 5070)
   dat <- read_sf(url)    #query db and read into sf obj
   if(nrow(dat)==0| is.null(dat)){
     print("No data returned for this request, please check provided refuge name")

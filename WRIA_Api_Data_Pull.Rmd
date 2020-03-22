@@ -17,7 +17,7 @@ userInput <- readReportRequest()
 #Obtain refuge data from FWS API
 fwsRefuge <- getFWSCadastral(toString(userInput$Refuge))
 #fwsRefuge <- st_transform(fwsRefuge,4269)
-#fwsRefuge <- st_transform(fwsRefuge,26910)
+#fwsRefuge <- st_transform(fwsRefuge,5070)
 
 fwsRefBuff <- st_as_sf(st_buffer(st_union(fwsRefuge), dist=0.01))
 if(userInput$HUC8){
