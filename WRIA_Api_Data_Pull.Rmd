@@ -5,19 +5,22 @@ output: html_document
 
 
 
-```{r setup, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+```{r setup, echo=FALSE, message=FALSE, warning=TRUE, error=FALSE}
 startTime <- Sys.time()
+
+libs <- readLines("Data/Libraries.txt")
+sapply(libs, require, character.only=TRUE)
+
 source("WRIA_Api_Data_Source.R")
-wriaLibraries()
+
 userInput <- readReportRequest()
+dataName <- gsub(" ", "", str_to_title(userInput$Refuge))
 
 #limit lookup goes here
 #param lookup goes here
 
 #Obtain refuge data from FWS API
-fwsRefuge <- getFWSCadastral(toString(userInput$Refuge))
-#fwsRefuge <- st_transform(fwsRefuge,4269)
-#fwsRefuge <- st_transform(fwsRefuge,5070)
+fwsRefuge <- getFWSCadastral(userInput$Refuge,writeResult=TRUE, resultsFolder=userInput$ResultFolder)
 
 fwsRefBuff <- st_as_sf(st_buffer(st_union(fwsRefuge), dist=0.01))
 if(userInput$HUC8){
@@ -39,10 +42,10 @@ This is an R Markdown document.
 regionLeaf <- leaflet() %>%
   addProviderTiles("Esri.WorldStreetMap", group="Map") %>%
   addProviderTiles("Esri.WorldImagery", group="Image") %>%
-  addPolygons(data=as_Spatial(st_transform(fwsRefuge,4269)), stroke=F, fillColor="cyan", fillOpacity=0.7, group="Refuge") %>%
-  addPolygons(data=as_Spatial(st_transform(huc8,4269)), fill=F, color="goldenrod",
+  addPolygons(data=as_Spatial(fwsRefuge,4269), stroke=F, fillColor="cyan", fillOpacity=0.7, group="Refuge") %>%
+  addPolygons(data=as_Spatial(huc8,4269), fill=F, color="goldenrod",
               opacity=0.8, group="HUC8") %>%
-  addPolygons(data=as_Spatial(st_transform(huc10,4269)), fillColor="white", fillOpacity=0.1,
+  addPolygons(data=as_Spatial(huc10,4269), fillColor="white", fillOpacity=0.1,
               color="blue",
               weight=2, opacity=1, group="HUC10", label =~htmlEscape(NAME)) %>%
   addLayersControl(baseGroups=c("Map", "Image"),
@@ -53,8 +56,33 @@ regionLeaf
 
 
 ```{r pull.fws.data, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+fwsRefBuffBox <- getBoundingBox(fwsRefBuff, epsg=4269)
+
+nwisSites <- getSites(source="NWIS", focalSf=fwsRefuge, bufferSf=fwsRefBuff,
+                            bbox=fwsRefBuffBox, epsg=4269,
+                            latColName="dec_lat_va", lngColName="dec_long_va",
+                            idColName="site_no")
+wqpSites <- getSites(source="WQP", focalSf=fwsRefuge, bufferSf=fwsRefBuff,
+                     bbox=fwsRefBuffBox, epsg=4269,
+                     latColName="LatitudeMeasure",
+                     lngColName="LongitudeMeasure",
+                     idColName="MonitoringLocationIdentifier")
+
+availableWqpData <- whatWQPdata(siteid=wqpSites$MonitoringLocationIdentifier)
+
+write.csv(availableWqpData, sprintf("%s/%s_AvailableWqpData.xlsx", userInput$ResultFolder, dataName))
+
+leaflet() %>%
+  addProviderTiles("Esri.WorldStreetMap", group = "map") %>%
+  addPolygons(data = st_as_sf(fwsRefuge), fill=F, color = "red",weight=2) %>%
+  addPolygons(data = st_as_sf(fwsRefBuff)) %>%
+  addCircleMarkers(data = st_as_sf(nwisSites), radius = 4, color = "blue") %>%
+  addCircleMarkers(data=st_as_sf(wqpSites), radius = 2, color = "red")
+
+
 
 
 ```
-
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+

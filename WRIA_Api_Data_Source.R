@@ -9,6 +9,7 @@ wriaLibraries <- function(){
   library(htmltools)
 }
 
+
 #' Abbreviates refuge name
 #' 
 #' @param refugeName: char, refuge nam
@@ -96,6 +97,7 @@ getHucs <- function(hucLayer, focalSf){
   return(huc)
 }
 
+
 #' Obtain refuge data from FWS Rest API
 #' 
 #' @param refugeName: char, Name of desired refuge
@@ -110,7 +112,7 @@ getFWSCadastral <- function(refugeName, writeResult=FALSE, resultsFolder=NULL){
   }
   baseUrl <- readLines("Data/base_URL.txt")
   url <- param_set(baseUrl[1], key = "where", value = sprintf("ORGNAME+LIKE+'%s%%25'",gsub(" ","+",refugeName))) %>%
-    param_set(key = "outSR", value = 5070)
+    param_set(key = "outSR", value = 4269)
   dat <- read_sf(url)    #query db and read into sf obj
   if(nrow(dat)==0| is.null(dat)){
     print("No data returned for this request, please check provided refuge name")
@@ -123,6 +125,87 @@ getFWSCadastral <- function(refugeName, writeResult=FALSE, resultsFolder=NULL){
   }
   
 }#getFWSCadastral
+
+
+#'returns bounding box of sf features as vector
+#' @author: Dr. Ashton Drew
+getBoundingBox <- function(sfData, epsg, addBuffer=FALSE, distBuffer=NA){
+  # could be polygon, line, point, or mixed geometry
+  dat <- sfData 
+  if (addBuffer==TRUE){
+    dat <- st_as_sf(st_buffer(st_union(dat), dist=distBuffer))
+  }
+  if (st_crs(dat) != st_crs(epsg)) {
+    # Check CRS and transorm if necessary
+    dat <- st_transform(dat, crs=epsg)
+  }
+  # Get bounding box as vector (xmin, ymin, xmax, ymax)
+  box <- as.vector(st_bbox(dat, crs=epsg))
+}
+
+
+getSites <- function(source, focalSf, bufferSf=NULL, bbox, epsg, latColName, lngColName, idColName){
+  # Identify NWIS sites within boundary
+  if(source=="NWIS"){
+    sitesDf <- whatNWISsites(bBox=round(bbox, 1))
+  } else {
+    sitesDf <- whatWQPsites(bBox=round(bbox, 1))
+  }
+  # convert located sites to spatial simple features
+  sitesSf <- st_as_sf(sitesDf, coords=c(lngColName, latColName), crs=epsg)
+  sitesColumns <- names(sitesSf)
+  # Identify all sites within focal area and label
+  inSites <- st_intersection(sitesSf, focalSf) %>%
+    dplyr::select(one_of(sitesColumns)) %>%
+    dplyr::mutate(InNear = "In")
+  # Identify sites near but outside focal area
+  if (!is.null(bufferSf)){
+    nearSites <- st_intersection(sitesSf, bufferSf) %>%
+      dplyr::select(one_of(sitesColumns)) %>%
+      dplyr::mutate(InNear = "Near")
+    if (nrow(inSites)>0){
+      nearSites <- st_difference(nearSites, inSites) %>%
+        dplyr::select(InNear, one_of(sitesColumns))
+      allSites <- rbind(inSites, nearSites)
+    } else {
+      allSites <- nearSites
+    }
+  } else {
+    allSites <- inSites
+    return(allSites)
+  }
+}
+
+#------------scratch
+
+dat <- getFWSCadastral("WHEELER")
+NWIS_Dat <- getSites(source = "NWIS", 
+         focalSf = dat, 
+         bbox = st_bbox(dat), 
+         epsg = st_crs(dat)$epsg, 
+         latColName="dec_lat_va", 
+         lngColName="dec_long_va",
+         idColName="site_no")
+
+NWIS_Buff <- st_as_sf(st_buffer(st_union(dat), dist=0.01))
+
+NWIS_Dat_Buff <- getSites(source = "NWIS", 
+                     focalSf = dat, 
+                     bbox = st_bbox(dat),
+                     bufferSf = NWIS_Buff,
+                     epsg = st_crs(dat)$epsg, 
+                     latColName="dec_lat_va", 
+                     lngColName="dec_long_va",
+                     idColName="site_no")
+
+leaflet() %>%
+  addProviderTiles("Esri.WorldStreetMap",group="map") %>%
+  addCircleMarkers(data = st_as_sf(NWIS_Dat), radius = 5)  %>%
+  addCircleMarkers(data = st_as_sf(NWIS_Dat_Buff),radius = 2, color = 'red') %>%
+  addPolygons(data = st_as_sf(dat), color = "purple", opacity = .3)
+#-------------------------------
+
+
 
 
 
