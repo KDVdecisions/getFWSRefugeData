@@ -14,7 +14,8 @@ wriaLibraries <- function(){
 #' 
 #' @param refugeName: char, refuge nam
 createNameAbbrev <- function(refugeName){
-  return(str_replace_all(str_to_title(refugeName), pattern=" ", repl=""))
+  name <- str_replace_all(str_to_title(refugeName), pattern=" ", repl="")
+  return(sprintf("%s_%s",name,"shapeFile"))
 }
 
 
@@ -104,8 +105,7 @@ getHucs <- function(hucLayer, focalSf){
 #' @param writeResult: boolean, describes whether or not to store obtained data
 #' @param resultsFolder: char, path to folder in which to store obtained data
 #' TODO: Include check for time out(ie FSW servers are down)
-##' Determine how to handle layerName parameter, and how the layers from .gdb relate to variables in data from Rest API
-getFWSCadastral <- function(refugeName, writeResult=FALSE, resultsFolder=NULL){
+getFWSCadastral <- function(refugeName, resultsFolder=NULL){
   if(nchar(refugeName) < 1){ #generate url to query DB
     print("Please provide a valid refuge name")
     return(NULL)
@@ -118,7 +118,7 @@ getFWSCadastral <- function(refugeName, writeResult=FALSE, resultsFolder=NULL){
     print("No data returned for this request, please check provided refuge name")
   }
   else{
-    if(writeResult == TRUE){
+    if(!is.null(resultsFolder)){
       writeFWSCadastral(dat, refugeName,resultsFolder)
     }
     return(dat)
@@ -143,11 +143,17 @@ getBoundingBox <- function(sfData, epsg, addBuffer=FALSE, distBuffer=NA){
   box <- as.vector(st_bbox(dat, crs=epsg))
 }
 
-
-getSites <- function(source, focalSf, bufferSf=NULL, bbox, epsg, latColName, lngColName, idColName){
+#' TODO: Explore colName arguments, remove if deemed unnnecessary
+getSites <- function(source, focalSf, bufferSf=NULL, bbox, epsg){
   # Identify NWIS sites within boundary
+  latColName <- "LatitudeMeasure"
+  lngColName <- "LongitudeMeasure"
+  idColName <- "MonitoringLocationIdentifier"
   if(source=="NWIS"){
     sitesDf <- whatNWISsites(bBox=round(bbox, 1))
+    latColName <- "dec_lat_va"
+    lngColName <- "dec_long_va"
+    idColName <- "site_no"
   } else {
     sitesDf <- whatWQPsites(bBox=round(bbox, 1))
   }
@@ -175,41 +181,6 @@ getSites <- function(source, focalSf, bufferSf=NULL, bbox, epsg, latColName, lng
     return(allSites)
   }
 }
-
-#------------scratch
-
-dat <- getFWSCadastral("WHEELER")
-NWIS_Dat <- getSites(source = "NWIS", 
-         focalSf = dat, 
-         bbox = st_bbox(dat), 
-         epsg = st_crs(dat)$epsg, 
-         latColName="dec_lat_va", 
-         lngColName="dec_long_va",
-         idColName="site_no")
-
-NWIS_Buff <- st_as_sf(st_buffer(st_union(dat), dist=0.01))
-
-NWIS_Dat_Buff <- getSites(source = "NWIS", 
-                     focalSf = dat, 
-                     bbox = st_bbox(dat),
-                     bufferSf = NWIS_Buff,
-                     epsg = st_crs(dat)$epsg, 
-                     latColName="dec_lat_va", 
-                     lngColName="dec_long_va",
-                     idColName="site_no")
-
-leaflet() %>%
-  addProviderTiles("Esri.WorldStreetMap",group="map") %>%
-  addCircleMarkers(data = st_as_sf(NWIS_Dat), radius = 5)  %>%
-  addCircleMarkers(data = st_as_sf(NWIS_Dat_Buff),radius = 2, color = 'red') %>%
-  addPolygons(data = st_as_sf(dat), color = "purple", opacity = .3)
-#-------------------------------
-
-
-
-
-
-
 
 checkHucs <- function(refugeName){
   focalSf <- getFWSCadastral(refugeName)

@@ -20,7 +20,7 @@ dataName <- gsub(" ", "", str_to_title(userInput$Refuge))
 #param lookup goes here
 
 #Obtain refuge data from FWS API
-fwsRefuge <- getFWSCadastral(userInput$Refuge,writeResult=TRUE, resultsFolder=userInput$ResultFolder)
+fwsRefuge <- getFWSCadastral(userInput$Refuge, resultsFolder=userInput$ResultFolder)
 
 fwsRefBuff <- st_as_sf(st_buffer(st_union(fwsRefuge), dist=0.01))
 if(userInput$HUC8){
@@ -58,31 +58,77 @@ regionLeaf
 ```{r pull.fws.data, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
 fwsRefBuffBox <- getBoundingBox(fwsRefBuff, epsg=4269)
 
-nwisSites <- getSites(source="NWIS", focalSf=fwsRefuge, bufferSf=fwsRefBuff,
-                            bbox=fwsRefBuffBox, epsg=4269,
-                            latColName="dec_lat_va", lngColName="dec_long_va",
-                            idColName="site_no")
-wqpSites <- getSites(source="WQP", focalSf=fwsRefuge, bufferSf=fwsRefBuff,
-                     bbox=fwsRefBuffBox, epsg=4269,
-                     latColName="LatitudeMeasure",
-                     lngColName="LongitudeMeasure",
-                     idColName="MonitoringLocationIdentifier")
+fwsRefNwisSites <- getSites(source="NWIS", focalSf=fwsRefuge, bufferSf=fwsRefBuff,
+                            bbox=fwsRefBuffBox, epsg=4269)
 
-availableWqpData <- whatWQPdata(siteid=wqpSites$MonitoringLocationIdentifier)
+fwsRefWqpSites <- getSites(source="WQP", focalSf=fwsRefuge, bufferSf=fwsRefBuff,
+                               bbox=fwsRefBuffBox, epsg=4269)
 
-write.csv(availableWqpData, sprintf("%s/%s_AvailableWqpData.xlsx", userInput$ResultFolder, dataName))
+fwsRefAvailWqpData <- whatWQPdata(siteid=fwsRefWqpSites$MonitoringLocationIdentifier)
+
+write.csv(fwsRefAvailWqpData, sprintf("%s/%s_AvailableWqpData.csv", userInput$ResultFolder, dataName))
 
 leaflet() %>%
   addProviderTiles("Esri.WorldStreetMap", group = "map") %>%
   addPolygons(data = st_as_sf(fwsRefuge), fill=F, color = "red",weight=2) %>%
   addPolygons(data = st_as_sf(fwsRefBuff)) %>%
-  addCircleMarkers(data = st_as_sf(nwisSites), radius = 4, color = "blue") %>%
-  addCircleMarkers(data=st_as_sf(wqpSites), radius = 2, color = "red")
+  addCircleMarkers(data = st_as_sf(fwsRefNwisSites), radius = 4, color = "blue") %>%
+  addCircleMarkers(data=st_as_sf(fwsRefWqpSites), radius = 2, color = "red")
 
 
 
 
 ```
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r pull.huc.data, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+huc8Box <- getBoundingBox(huc8, epsg=4269)
+huc10Box <- getBoundingBox(huc10, epsg=4269)
+
+#Obtain huc8 and huc10 NWIS sites
+huc8NwisSites <- getSites(source="NWIS",focalSf=huc8,
+                          bbox=huc8Box,epsg=4269)
+huc10NwisSites <- getSites(source="NWIS",focalSf=huc10,
+                           bbox=huc10Box,epsg=4269)
+
+#Obtain data for huc8 and huc10 NWIS sites
+huc8AvailNwisData <- whatNWISdata(siteNumber=huc8NwisSites$site_no)
+huc10AvailNwisData <- whatNWISdata(siteNumber=huc10NwisSites$site_no)
+
+#write NWIS data for huc8 and huc10 sites to results folder
+write.csv(huc8AvailNwisData,sprintf("%s/%s_huc8AvailableNwisData.csv",userInput$ResultFolder, dataName))
+write.csv(huc10AvailNwisData,sprintf("%s/%s_huc10AvailableNwisData.csv",userInput$ResultFolder, dataName))
+
+#Obtain huc8 and huc10 WQP Sites
+huc8WqpSites <- getSites(source="WQP", focalSf=huc8,
+                         bbox=huc8Box,epsg=4269)
+huc10WqpSites <- getSites(source="WQP", focalSf=huc10,
+                         bbox=huc10Box,epsg=4269)
+
+#Obtain WQP data for huc8 and huc10 sites
+huc8AvailWqpData <- whatWQPdata(siteid = huc8WqpSites$MonitoringLocationIdentifier)  #these calls need vigorous testing (due to inconsistent failure)
+huc10AvailWqpData <- whatWQPdata(siteid = huc10WqpSites$MonitoringLocationIdentifier)
+
+#Write WQP data for huc8 and huc10 sites to results folder
+write.csv(huc8AvailWqpData,sprintf("%s/%s_huc8AvailableWqpData.csv",userInput$ResultFolder, dataName))
+write.csv(huc10AvailWqpData,sprintf("%s/%s_huc10AvailableWqpData.csv",userInput$ResultFolder, dataName))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
