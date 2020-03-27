@@ -14,23 +14,23 @@ sapply(libs, require, character.only=TRUE)
 source("WRIA_Api_Data_Source.R")
 
 userInput <- readReportRequest()
+
 dataName <- gsub(" ", "", str_to_title(userInput$Refuge))
 
 #limit lookup goes here
 #param lookup goes here
 
 #Obtain refuge data from FWS API
-fwsRefuge <- getFWSCadastral(userInput$Refuge, resultsFolder=userInput$ResultFolder)
+fwsRefugeData <- createSiteObject(getFWSCadastral(userInput$Refuge), 
+                                      buffer=TRUE)
+fwsApprovedData <- createSiteObject(getFWSCadastral(userInput$Refuge,approved=TRUE),buffer=TRUE)
 
-fwsRefBuff <- st_as_sf(st_buffer(st_union(fwsRefuge), dist=0.01))
-if(userInput$HUC8){
-  huc8 <- getHucs(hucLayer="WBDHU8", focalSf=fwsRefuge)
-  centroids8 <- st_centroid(huc8)
-}
-if(userInput$HUC10){
-  huc10 <- getHucs(hucLayer="WBDHU10", focalSf=fwsRefuge)
-  centroids10 <- st_centroid(huc10)
-}
+huc8Data <- createSiteObject(getHucs(hucLayer="WBDHU8", focalSf=fwsRefugeData@baseData))
+centroids8 <- st_centroid(huc8)
+
+huc10Data <- createSiteObject(getHucs(hucLayer="WBDHU10",focalSf=fwsRefugeData@baseData))
+centroids10 <- st_centroid(huc10)
+
 
 ```
 
@@ -45,19 +45,25 @@ This report presents data downloaded on `r Sys.Date()` from the USGS and EPA hyd
 The refuge intersects `r nrow(huc8)` HUC8 (`r unique(huc8$NAME)`) and `r nrow(huc10)` HUC10 (`r unique(huc10$NAME)`) units.  
 
 ```{r refuge.boundaries, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+
 regionLeaf <- leaflet() %>%
   addProviderTiles("Esri.WorldStreetMap", group="Map") %>%
   addProviderTiles("Esri.WorldImagery", group="Image") %>%
-  addPolygons(data=as_Spatial(fwsRefuge,4269), stroke=F, fillColor="cyan", fillOpacity=0.7, group="Refuge") %>%
-  addPolygons(data=as_Spatial(huc8,4269), fill=F, color="goldenrod",
+  addPolygons(data=as_Spatial(fwsRefugeData@baseData,4269), stroke=F,  fillColor="cyan", fillOpacity=0.7, group="Refuge") %>%
+  addPolygons(data=as_Spatial(huc8Data@baseData,4269), fill=F, color="goldenrod",
               opacity=0.8, group="HUC8") %>%
-  addPolygons(data=as_Spatial(huc10,4269), fillColor="white", fillOpacity=0.1,
+  addPolygons(data=as_Spatial(huc10Data@baseData,4269), fillColor="white", fillOpacity=0.1,
               color="blue",
               weight=2, opacity=1, group="HUC10", label =~htmlEscape(NAME)) %>%
   addLayersControl(baseGroups=c("Map", "Image"),
                    overlayGroups = c("HUC8", "HUC10", "Refuge"),
                    options = layersControlOptions(collapsed=FALSE))
 regionLeaf
+
+
+
+
+
 ```
 
 

@@ -1,14 +1,43 @@
-wriaLibraries <- function(){
-  library(sf)
-  library(urltools)
-  library(mapview)
-  library(stringr)
-  library(mapview)
-  library(leaflet)
-  library(dataRetrieval)
-  library(htmltools)
+setClass(
+  Class="SiteData",
+  representation(baseData="sf",
+                 nwisSites="sf",
+                 wqpSites="sf",
+                 availableNwisData="data.frame",
+                 availableWqpData="data.frame")
+)
+
+createSiteObject <- function(baseData, buffer=FALSE){
+  if(buffer){
+    siteBuffer  <- st_as_sf(st_buffer(st_union(baseData), dist=0.01))
+    boundingBox <- getBoundingBox(siteBuffer, epsg=4269)  
+  }
+  else{
+    siteBuffer <- NULL
+    boundingBox <- getBoundingBox(baseData, epsg=4269)
+  }
+  
+  nwisSites = getSites(source="NWIS", focalSf=baseData, bufferSf=siteBuffer,
+                       bbox=boundingBox, epsg=4269)
+  wqpSites = getSites(source="WQP", focalSf=baseData, bufferSf=siteBuffer,
+                      bbox=boundingBox, epsg=4269)
+  
+  availableNwisData = whatNWISdata(siteNumber=nwisSites$site_no)
+
+  availableWqpData = whatWQPdata(siteid=wqpSites$MonitoringLocationIdentifier)
+  
+  site <- new("SiteData",
+              baseData=baseData,
+              nwisSites=nwisSites,
+              wqpSites=wqpSites,
+              availableNwisData=availableNwisData,
+              availableWqpData = availableWqpData
+  )
+  return(site)
 }
 
+
+dat <- createSiteObject_New(getFWSCadastral("WHEELER",),buffer=TRUE)
 
 #' Abbreviates refuge name
 #' 
