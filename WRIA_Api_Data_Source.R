@@ -46,7 +46,7 @@ writeFWSCadastral <- function(dat, refugeName, resultsFolder){
   else if(dir.exists(resultsFolder)) {         #if dir exists
     if(file.access(resultsFolder,2) == 0){    #if R has write permissions
       dir.create(file.path(resultsPath))
-      st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp", 
+      st_write(dat, sprintf("%s/%s_Boundary.shp", 
                             resultsPath, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)   
     }
     else{
@@ -77,18 +77,17 @@ writeFWSCadastral <- function(dat, refugeName, resultsFolder){
 #' TODO: Lot's of testing, attempt to find way to query API with polygon rather than
 #'       bounding box to remove need to filter out excess HUCs
 getHucs <- function(hucLayer, focalSf){
-  baseUrl <- readLines("Data/Base_URL.txt")
   bbox <- toString(st_bbox(focalSf))
   epsg <- st_crs(focalSf)$epsg
   
   if(hucLayer == "WBDHU8"){
-    url <- baseUrl[2]
+    baseUrl <- readLines("Data/Base_URL.txt")[2]
   }
   else if (hucLayer == "WBDHU10"){
-    url <- baseUrl[3]
+    baseUrl <- readLines("Data/Base_URL.txt")[3]
   }
   
-  url <- param_set(url, key ="geometry", value = URLencode(bbox)) %>%
+  url <- param_set(baseUrl, key ="geometry", value = URLencode(bbox)) %>%
     param_set(key = "inSR", value = epsg) %>%
     param_set(key = "outSR", value = epsg)
   
@@ -105,13 +104,18 @@ getHucs <- function(hucLayer, focalSf){
 #' @param writeResult: boolean, describes whether or not to store obtained data
 #' @param resultsFolder: char, path to folder in which to store obtained data
 #' TODO: Include check for time out(ie FSW servers are down)
-getFWSCadastral <- function(refugeName, resultsFolder=NULL){
+getFWSCadastral <- function(refugeName, resultsFolder=NULL, approved=FALSE){
   if(nchar(refugeName) < 1){ #generate url to query DB
     print("Please provide a valid refuge name")
     return(NULL)
   }
-  baseUrl <- readLines("Data/base_URL.txt")
-  url <- param_set(baseUrl[1], key = "where", value = sprintf("ORGNAME+LIKE+'%s%%25'",gsub(" ","+",refugeName))) %>%
+  if(approved){
+    baseUrl <- readLines("Data/base_URL.txt")[4]
+  }else{
+    baseUrl <- readLines("Data/base_URL.txt")[1]
+  }
+  
+  url <- param_set(baseUrl, key = "where", value = sprintf("ORGNAME+LIKE+'%s%%25'",gsub(" ","+",refugeName))) %>%
     param_set(key = "outSR", value = 4269)
   dat <- read_sf(url)    #query db and read into sf obj
   if(nrow(dat)==0| is.null(dat)){
