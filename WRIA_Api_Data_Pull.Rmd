@@ -4,8 +4,7 @@ output: html_document
 ---
 
 
-
-```{r setup, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE, include=FALSE}
 startTime <- Sys.time()
 
 libs <- readLines("Data/Libraries.txt")
@@ -15,21 +14,35 @@ source("WRIA_Api_Data_Source.R")
 
 userInput <- readReportRequest()
 
+#userInput$Approved <- TRUE
+#userInput$Refuge <- "ST. MARKS"
+
 dataName <- gsub(" ", "", str_to_title(userInput$Refuge))
 
 #limit lookup goes here
 #param lookup goes here
 
-#Obtain refuge data from FWS API
-fwsRefugeData <- createSiteObject(getFWSCadastral(userInput$Refuge), 
-                                      buffer=TRUE)
-fwsApprovedData <- createSiteObject(getFWSCadastral(userInput$Refuge,approved=TRUE),buffer=TRUE)
 
-huc8Data <- createSiteObject(getHucs(hucLayer="WBDHU8", focalSf=fwsRefugeData@baseData))
-centroids8 <- st_centroid(huc8)
+#Obtain huc and refuge data, then get related NWIS and WQP sites and data, store in siteData object
 
-huc10Data <- createSiteObject(getHucs(hucLayer="WBDHU10",focalSf=fwsRefugeData@baseData))
-centroids10 <- st_centroid(huc10)
+#if approved hucs should be obtained via approved boundaries
+
+
+
+siteData <- getSiteData(userInput)
+endTime <- Sys.time()
+time <- endTime-startTime
+
+interest <- siteData$interestData
+approved <- siteData$approvedData
+huc8 <- siteData$huc8Data
+huc10 <- siteData$huc10Data
+
+if(userInput$Approved){
+  orgname <- unique(approved@baseData$ORGNAME)
+}else{
+  orgname <- unique(interest@baseData$ORGNAME)
+}
 
 
 ```
@@ -38,111 +51,27 @@ centroids10 <- st_centroid(huc10)
 
 This report presents data downloaded on `r Sys.Date()` from the USGS and EPA hydrologic and water quality database accessed via the R dataRetrieval package (de Cicco et al. 2018).  The report runs based on user input supplied in the file: *ReportRequest.xlsx*.  Resulting data are saved into a project folder and presented for inspection in this interactive html report.  
 
-# `r unique(fwsRefuge$ORGNAME)`
+
 
 ## Refuge Boundaries and Associated Hydrologic Units
 
-The refuge intersects `r nrow(huc8)` HUC8 (`r unique(huc8$NAME)`) and `r nrow(huc10)` HUC10 (`r unique(huc10$NAME)`) units.  
+## `r unique(orgname)`
+##`r hey`
+##The refuge intersects `r nrow(huc8@baseData)` HUC8 (`r unique(huc8$NAME)`) and `r nrow(huc10)` HUC10 (`r unique(huc10$NAME)`) units.  
 
-```{r refuge.boundaries, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
 
-regionLeaf <- leaflet() %>%
-  addProviderTiles("Esri.WorldStreetMap", group="Map") %>%
-  addProviderTiles("Esri.WorldImagery", group="Image") %>%
-  addPolygons(data=as_Spatial(fwsRefugeData@baseData,4269), stroke=F,  fillColor="cyan", fillOpacity=0.7, group="Refuge") %>%
-  addPolygons(data=as_Spatial(huc8Data@baseData,4269), fill=F, color="goldenrod",
-              opacity=0.8, group="HUC8") %>%
-  addPolygons(data=as_Spatial(huc10Data@baseData,4269), fillColor="white", fillOpacity=0.1,
-              color="blue",
-              weight=2, opacity=1, group="HUC10", label =~htmlEscape(NAME)) %>%
-  addLayersControl(baseGroups=c("Map", "Image"),
-                   overlayGroups = c("HUC8", "HUC10", "Refuge"),
-                   options = layersControlOptions(collapsed=FALSE))
-regionLeaf
+hucPlot <- generatePlot(siteData)
+hucPlot
 
+#write.csv(huc8AvailWqpData,sprintf("%s/%s_huc8AvailableWqpData.csv",userInput$ResultFolder, dataName))
+#write.csv(huc10AvailWqpData,sprintf("%s/%s_huc10AvailableWqpData.csv",userInput$ResultFolder, dataName))
 
-
+#write.csv(huc8AvailNwisData,sprintf("%s/%s_huc8AvailableNwisData.csv",userInput$ResultFolder, dataName))
+#write.csv(huc10AvailNwisData,sprintf("%s/%s_huc10AvailableNwisData.csv",userInput$ResultFolder, dataName))
 
 
 ```
-
-
-```{r pull.fws.data, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
-fwsRefBuffBox <- getBoundingBox(fwsRefBuff, epsg=4269)
-
-fwsRefNwisSites <- getSites(source="NWIS", focalSf=fwsRefuge, bufferSf=fwsRefBuff,
-                            bbox=fwsRefBuffBox, epsg=4269)
-
-fwsRefWqpSites <- getSites(source="WQP", focalSf=fwsRefuge, bufferSf=fwsRefBuff,
-                               bbox=fwsRefBuffBox, epsg=4269)
-
-fwsRefAvailWqpData <- whatWQPdata(siteid=fwsRefWqpSites$MonitoringLocationIdentifier)
-
-write.csv(fwsRefAvailWqpData, sprintf("%s/%s_AvailableWqpData.csv", userInput$ResultFolder, dataName))
-
-#leaflet() %>%
-#  addProviderTiles("Esri.WorldStreetMap", group = "map") %>%
-#  addPolygons(data = st_as_sf(fwsRefuge), fill=F, color = "red",weight=2) %>%
-#  addPolygons(data = st_as_sf(fwsRefBuff)) %>%
-#  addCircleMarkers(data = st_as_sf(fwsRefNwisSites), radius = 4, color = "blue") %>%
-#  addCircleMarkers(data=st_as_sf(fwsRefWqpSites), radius = 2, color = "red")
-
-
-
-
-```
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
-
-```{r pull.huc.data, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
-huc8Box <- getBoundingBox(huc8, epsg=4269)
-huc10Box <- getBoundingBox(huc10, epsg=4269)
-
-#Obtain huc8 and huc10 NWIS sites
-huc8NwisSites <- getSites(source="NWIS",focalSf=huc8,
-                          bbox=huc8Box,epsg=4269)
-huc10NwisSites <- getSites(source="NWIS",focalSf=huc10,
-                           bbox=huc10Box,epsg=4269)
-
-#Obtain data for huc8 and huc10 NWIS sites
-huc8AvailNwisData <- whatNWISdata(siteNumber=huc8NwisSites$site_no)
-huc10AvailNwisData <- whatNWISdata(siteNumber=huc10NwisSites$site_no)
-
-#write NWIS data for huc8 and huc10 sites to results folder
-write.csv(huc8AvailNwisData,sprintf("%s/%s_huc8AvailableNwisData.csv",userInput$ResultFolder, dataName))
-write.csv(huc10AvailNwisData,sprintf("%s/%s_huc10AvailableNwisData.csv",userInput$ResultFolder, dataName))
-
-#Obtain huc8 and huc10 WQP Sites
-huc8WqpSites <- getSites(source="WQP", focalSf=huc8,
-                         bbox=huc8Box,epsg=4269)
-huc10WqpSites <- getSites(source="WQP", focalSf=huc10,
-                         bbox=huc10Box,epsg=4269)
-
-#Obtain WQP data for huc8 and huc10 sites
-huc8AvailWqpData <- whatWQPdata(siteid = huc8WqpSites$MonitoringLocationIdentifier)  #these calls need vigorous testing (due to inconsistent failure)
-huc10AvailWqpData <- whatWQPdata(siteid = huc10WqpSites$MonitoringLocationIdentifier)
-
-#Write WQP data for huc8 and huc10 sites to results folder
-write.csv(huc8AvailWqpData,sprintf("%s/%s_huc8AvailableWqpData.csv",userInput$ResultFolder, dataName))
-write.csv(huc10AvailWqpData,sprintf("%s/%s_huc10AvailableWqpData.csv",userInput$ResultFolder, dataName))
-
-#leaflet() %>%
-#  addProviderTiles("Esri.WorldStreetMap") %>%
-#  addPolygons(data=huc8,col="blue", fill=FALSE) %>%
-#  addPolygons(data=huc10,col="red", fill=FALSE) %>%
-#  addCircles(data=huc8WqpSites, col="blue") %>%
-#  addCircles(data=huc10WqpSites, col="red")
-  
-
-```
-
-
-
-
-
-
-
-
-
 
 
 
