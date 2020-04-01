@@ -7,3 +7,4 @@ leaflet
 dataRetrieval
 htmltools
 dplyr
+openxlsx

@@ -1,13 +1,12 @@
 setClass(
   Class="SiteData",
-  representation(baseData="sf",
-                 nwisSites="sf",
+  representation(nwisSites="sf",
                  wqpSites="sf",
                  availableNwisData="data.frame",
                  availableWqpData="data.frame")
 )
 
-#'creates SiteData object which contains information about a requested site
+#'creates SiteData object which contains relevant NWIS and WQP data about a requested site
 #'
 #'@param baseData: sf object containing base geometry for requested site
 #'@param NWIS: Logical indicating whether NWIS data should be included
@@ -23,9 +22,7 @@ createSiteObject <- function(baseData, NWIS, WQP, buffer=FALSE){
     siteBuffer <- NULL
     boundingBox <- getBoundingBox(baseData, epsg=4269)
   }
-  
   site <- new("SiteData")
-  site@baseData <- baseData
   
   if(NWIS){
     nwisSites <- getSites(source="NWIS", focalSf=baseData, bufferSf=siteBuffer,
@@ -38,109 +35,43 @@ createSiteObject <- function(baseData, NWIS, WQP, buffer=FALSE){
   if(WQP){
     wqpSites <- getSites(source="WQP", focalSf=baseData, bufferSf=siteBuffer,
                         bbox=boundingBox, epsg=4269)
-    
-    print(NROW(wqpSites))
-    
     availableWqpData <- whatWQPdata(siteid=wqpSites$MonitoringLocationIdentifier)
     site@wqpSites <- wqpSites
     site@availableWqpData <- availableWqpData
   }
   return(site)
-}
+}#createSiteObject
 
-#'returns a list of SiteData objects containing information requested in userInput
-#'@param userInput: data.frame containing user input
-#'TODO: Clean up and make more readable
-getSiteData <- function(userInput){
-  fwsInterest=NULL
-  fwsApproved=NULL
-  huc8=NULL
-  huc10=NULL
-  
-  if(userInput$Approved){
-    fwsApproved <- createSiteObject(baseData=getFWSCadastral(userInput$Refuge,approved=TRUE),
-                                    NWIS=userInput$NWIS,
-                                    WQP=userInput$WQP,
-                                    buffer=TRUE)
-    if(userInput$HUC8){
-      huc8 <- createSiteObject(baseData=getHucs(hucLayer="WBDHU8",
-                                                focalSf=fwsApproved@baseData),
-                               NWIS=userInput$NWIS,
-                               WQP=userInput$WQP)
-    }
-    if(userInput$HUC10){
-      huc10 <- createSiteObject(baseData=getHucs(hucLayer="WBDHU10",
-                                                 focalSf=fwsApproved@baseData),
-                                NWIS=userInput$NWIS,
-                                WQP=userInput$WQP)
-    }
-  }#if userInput$approved
-  
-  if(userInput$Interest){
-    fwsInterest <- createSiteObject(baseData=getFWSCadastral(userInput$Refuge), 
-                                    NWIS=userInput$NWIS,
-                                    WQP=userInput$WQP,
-                                    buffer=TRUE)
-    if(!userInput$Approved){
-      if(userInput$HUC8){
-        huc8 <- createSiteObject(baseData=getHucs(hucLayer="WBDHU8",
-                                                  focalSf=fwsInterest@baseData),
-                                 NWIS=userInput$NWIS,
-                                 WQP=userInput$WQP)
-      }
-      if(userInput$HUC10){
-        huc10 <- createSiteObject(baseData=getHucs(hucLayer="WBDHU10",
-                                                   focalSf=fwsInterest@baseData),
-                                  NWIS=userInput$NWIS,
-                                  WQP=userInput$WQP)
-      }
-    }#if !approved
-  }#if userInput$interest
-  return(list("interestData"=fwsInterest,"approvedData"=fwsApproved,"huc8Data"=huc8,"huc10Data"=huc10))
-}
+
 #'Generates plot based on requested data
-#'@param siteData: list of SiteData objects containing requested data
-generatePlot <- function(siteData){
+#'
+#'@param fwsRefuge: sf object containing refuge geomentry
+#'@param huc8: sf object containing intersecting huc8 geometry
+#'@param huc10: sf object containing intersecting huc10 geometry
+generatePlot <- function(fwsRefuge,huc8,huc10){
   regionLeaf <- leaflet() %>%
     addProviderTiles("Esri.WorldStreetMap", group="Map") %>%
-    addProviderTiles("Esri.WorldImagery", group="Image")
-  overlayGroups <- c()
-  if(!is.null(siteData$approvedData)){
-    regionLeaf <- addPolygons(regionLeaf,data=as_Spatial(siteData$approvedData@baseData,4269), stroke=F,  
-                              fillColor="red", fillOpacity=0.7, group="Approved Boundaries")
-    overlayGroups <- c(overlayGroups,"Approved Boundaries")
+    addProviderTiles("Esri.WorldImagery", group="Image") %>%
+    addPolygons(data=as_Spatial(fwsRefuge,4269), stroke=F,fillColor="red",
+                fillOpacity=0.7,group="Refuge")
+  overlayGroups <- c("Refuge")
+  
+  if(!is.null(huc8)){
+    regionLeaf <- addPolygons(regionLeaf, data=as_Spatial(huc8,4269),fill=F, 
+                              color="goldenrod",opacity=0.8,group="HUC8")
+    overlayGroups = c(overlayGroups,"HUC8")
   }
-  if(!is.null(siteData$interestData)){
-    regionLeaf <- addPolygons(regionLeaf,data=as_Spatial(siteData$interestData@baseData,4269), stroke=F,  
-                              fillColor="cyan", fillOpacity=0.7, group="Interest Boundaries")
-    overlayGroups <- c(overlayGroups,"Interest Boundaries")
-  }
-  if(!is.null(siteData$huc8Data)){
-    regionLeaf <- addPolygons(regionLeaf,data=as_Spatial(siteData$huc8Data@baseData,4269), fill=F, color="goldenrod",
-                opacity=0.8, group="HUC8")
-    overlayGroups <- c(overlayGroups,"HUC8")
-  }
-  if(!is.null(siteData$huc10Data)){
-    regionLeaf <- addPolygons(regionLeaf,data=as_Spatial(siteData$huc10Data@baseData,4269), fillColor="white", fillOpacity=0.1,
-                color="blue",weight=2, opacity=1, group="HUC10")
-    overlayGroups <- c(overlayGroups,"HUC10")
+  if(!is.null(huc10)){
+    regionLeaf <- addPolygons(regionLeaf, data=as_Spatial(huc10,4269),fillColor="white", 
+    fillOpacity=0.1, color="blue", weight=2, opacity=1, group="HUC10")
+    overlayGroups = c(overlayGroups,"HUC10")
   }
   
   regionLeaf <- addLayersControl(regionLeaf,baseGroups=c("Map", "Image"),
                    overlayGroups = overlayGroups,
                    options = layersControlOptions(collapsed=FALSE))
  return(regionLeaf)
-}
-
-
-
-#' Abbreviates refuge name
-#' 
-#' @param refugeName: char, refuge nam
-createNameAbbrev <- function(refugeName){
-  name <- str_replace_all(str_to_title(refugeName), pattern=" ", repl="")
-  return(sprintf("%s_%s",name,"shapeFile"))
-}
+}#generatePlot
 
 
 #' Check to see if warning indicates result directory couldn't be created
@@ -161,17 +92,16 @@ isWriteWarning <- function(warning){
 #' TODO: Add code to catch errors when trying to create result folder, hide warnings generated by st_write(),
 ##' if .shp already exists should it automatically be overwritten?
 writeFWSCadastral <- function(dat, refugeName, resultsFolder){
-  refugeAbbrev <- createNameAbbrev(refugeName)  
-  resultsPath <- sprintf("%s/%s",resultsFolder,refugeAbbrev)
+  resultsPath <- sprintf("%s/%s",resultsFolder,refugeName)
   if(is.null(resultsFolder)){
-    print("Please provide a path to folder in which to store results")
+    stop("Please provide a path to folder in which to store results")
     return(dat)
   }
   else if(dir.exists(resultsFolder)) {         #if dir exists
     if(file.access(resultsFolder,2) == 0){    #if R has write permissions
       dir.create(file.path(resultsPath))
       st_write(dat, sprintf("%s/%s_Boundary.shp", 
-                            resultsPath, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)   
+                            resultsPath, refugeName), delete_dsn=TRUE, quiet = TRUE)   
     }
     else{
       print(sprintf("This program does not have permission to write to %s",resultsFolder))
@@ -185,11 +115,12 @@ writeFWSCadastral <- function(dat, refugeName, resultsFolder){
     warning = function(w){
       if(isWriteWarning(w)){ 
         print(sprintf("Cannot create/access '%s', please check provided path", resultsFolder))
-        do.call(return, list(NULL),envir = sys.frame(-4)) #return to getFWSCadastral
+        stop()
+        #do.call(return, list(NULL),envir = sys.frame(-4)) #return to getFWSCadastral
       }
     })
     st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp", 
-                          resultsPath, refugeAbbrev), delete_dsn=TRUE, quiet = TRUE)  
+                          resultsPath, refugeName), delete_dsn=TRUE, quiet = TRUE)  
   }
   
 }#Write FWSCadastral
@@ -221,7 +152,7 @@ getHucs <- function(hucLayer, focalSf){
   huc <- dplyr::filter(huc, lengths(st_intersects(huc,focalSf))>0)
   
   return(huc)
-}
+}#getHucs
 
 
 #' Obtain refuge data from FWS Rest API
@@ -232,7 +163,7 @@ getHucs <- function(hucLayer, focalSf){
 #' TODO: Include check for time out(ie FSW servers are down)
 getFWSCadastral <- function(refugeName, approved=FALSE){
   if(nchar(refugeName) < 1){ #generate url to query DB
-    print("Please provide a valid refuge name")
+    stop("Please provide a valid refuge name")
     return(NULL)
   }
   if(approved){
@@ -245,7 +176,7 @@ getFWSCadastral <- function(refugeName, approved=FALSE){
     param_set(key = "outSR", value = 4269)
   dat <- read_sf(url)    #query db and read into sf obj
   if(nrow(dat)==0| is.null(dat)){
-    print("No data returned for this request, please check provided refuge name")
+    stop("No data returned for this request, please check provided refuge name")
   }
   else{
     return(dat)
@@ -255,6 +186,7 @@ getFWSCadastral <- function(refugeName, approved=FALSE){
 
 
 #'returns bounding box of sf features as vector
+#'
 #' @author: Dr. Ashton Drew
 getBoundingBox <- function(sfData, epsg, addBuffer=FALSE, distBuffer=NA){
   # could be polygon, line, point, or mixed geometry
@@ -268,21 +200,27 @@ getBoundingBox <- function(sfData, epsg, addBuffer=FALSE, distBuffer=NA){
   }
   # Get bounding box as vector (xmin, ymin, xmax, ymax)
   box <- as.vector(st_bbox(dat, crs=epsg))
-}
+}#getBoundingBox
 
-#' TODO: fix
+#' Returns NWIS or WQP testing sites in and around a given polygon
+#' 
+#' @param source: String dictating whether to obtain data from NWIS or WQP
+#' @param focalSf: Shapefile containing geometry in which to look for test sites
+#' @param bufferSf: Shapefile containing a buffer around the focal sf in which to look for test sites
+#' @param bbox: Bounding box of buffer or focalSf if buffer is null
+#' @param epsg: CRS used by focalSf
 getSites <- function(source, focalSf, bufferSf=NULL, bbox, epsg){
   # Identify NWIS sites within boundary
   latColName <- "LatitudeMeasure"
   lngColName <- "LongitudeMeasure"
   idColName <- "MonitoringLocationIdentifier"
   if(source=="NWIS"){
-    sitesDf <- whatNWISsites(bBox=round(bbox, 1))
+    sitesDf <- whatNWISsites(bBox=round(bbox, 3))
     latColName <- "dec_lat_va"
     lngColName <- "dec_long_va"
     idColName <- "site_no"
   } else {
-    sitesDf <- whatWQPsites(bBox=round(bbox, 1))
+    sitesDf <- whatWQPsites(bBox=round(bbox, 3))
   }
   # convert located sites to spatial simple features
   sitesSf <- st_as_sf(sitesDf, coords=c(lngColName, latColName), crs=epsg)
@@ -309,9 +247,9 @@ getSites <- function(source, focalSf, bufferSf=NULL, bbox, epsg){
     allSites <- inSites
     return(allSites)
   }
-}
+}#getSites
 
-#'reads in user input from ReportRequest.csv and ensures logical input is valid
+#'reads in user input from ReportRequest.csv,ensures logical input is valid, converts char input to logical where possible
 readReportRequest <- function(){
   input <- read.csv("data/ReportRequest.csv",stringsAsFactors = FALSE)
   for(i in 2:7){
@@ -324,39 +262,13 @@ readReportRequest <- function(){
     }
     else{
       stop(sprintf("invalid input in '%s' field, please check ReportRequest.csv in Data folder",names(input)[i]))
-      return(1)
     }
   }
-  if(input$Approved == FALSE & input$Interest == FALSE){
+  if(!input$Approved& !input$Interest){
     stop("Invalid input, either interest field or approved field must be 'yes', please check ReportRequest.csv in Data folder")
-    return(2)
+  }else if(input$Approved& input$Interest){
+    stop("Invalid input, both interest and approved fields may not be set to 'yes', please check ReportRequest.csv in Data folder")
   }
   return(input)
-}
-
-#st_intersection(nearSites,focalSf)
-
-#dat <- st_intersects(nearSites,focalSf)
-
-#lengths(dat) > 0
-
-#dat[[4]]
-
-#dat <- st_intersection(sitesSf,focalSf)%>%
-#  dplyr::select(one_of(sitesColumns)) %>%
-#  dplyr::mutate(InNear = "In")
-
-#dat$InNear
-#leaflet()%>%
-#  addProviderTiles("Esri.WorldStreetMap") %>%
-#  addPolygons(data=focalSf) %>%
-#  addPolygons(data=bufferSf,color="cyan",fill=FALSE) %>%
-#  addCircles(data=allSites,radius=5,color="red")
-  #addCircles(data=inSites,radius=5,color="red") %>%
-  #addCircles(data=nearSites,radius=3,color="green")
-
-#inSites <- st_intersection(sitesSf, focalSf) %>%
-#  dplyr::select(one_of(sitesColumns)) %>%
-#  dplyr::mutate(InNear = "In")
-
+}#readReportRequest
 

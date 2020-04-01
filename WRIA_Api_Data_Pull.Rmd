@@ -12,38 +12,67 @@ sapply(libs, require, character.only=TRUE)
 
 source("WRIA_Api_Data_Source.R")
 
+#read in and validate user input, convert char to logical where possible
 userInput <- readReportRequest()
-
-#userInput$Approved <- TRUE
-#userInput$Refuge <- "ST. MARKS"
-
+#Tidy up refuge name
 dataName <- gsub(" ", "", str_to_title(userInput$Refuge))
 
-#limit lookup goes here
-#param lookup goes here
 
-
-#Obtain huc and refuge data, then get related NWIS and WQP sites and data, store in siteData object
-
-#if approved hucs should be obtained via approved boundaries
-
-
-
-siteData <- getSiteData(userInput)
-endTime <- Sys.time()
-time <- endTime-startTime
-
-interest <- siteData$interestData
-approved <- siteData$approvedData
-huc8 <- siteData$huc8Data
-huc10 <- siteData$huc10Data
-
+#Get refuge data and relevant NWIS and WQP data for either approved or interest boundaries
 if(userInput$Approved){
-  orgname <- unique(approved@baseData$ORGNAME)
+  fwsRefuge <- getFWSCadastral(userInput$Refuge,approved=TRUE) 
+  refugeData <- createSiteObject(fwsRefuge, userInput$NWIS, userInput$WQP, buffer=TRUE)
+  #write data to specified output folder
+  writeFWSCadastral(fwsRefuge,sprintf("%sApproved_ShapeFile",dataName),userInput$ResultFolder)
+  write.csv(refugeData@availableWqpData,sprintf("%s/%s_fwsAppAvailableWqpData.csv",
+                                                userInput$ResultFolder,dataName))
+  write.csv(refugeData@availableNwisData,sprintf("%s/%s_fwsAppAvailableNwisData.csv",
+                                                 userInput$ResultFolder,dataName))
 }else{
-  orgname <- unique(interest@baseData$ORGNAME)
+  fwsRefuge <- getFWSCadastral(userInput$Refuge)
+  refugeData <- createSiteObject(fwsRefuge, userInput$NWIS, userInput$WQP, buffer=TRUE)
+  writeFWSCadastral(fwsRefuge,sprintf("%s_interest",dataName),userInput$ResultFolder)
+  write.csv(refugeData@availableWqpData,sprintf("%s/%s_fwsIntAvailableWqpData.csv",
+                                                userInput$ResultFolder,dataName))
+  write.csv(refugeData@availableNwisData,sprintf("%s/%s_fwsIntAvailableNwisData.csv",
+                                                 userInput$ResultFolder,dataName))
 }
 
+#Get intersecting huc8 data and relavant NWIS and WQP data
+if(userInput$HUC8){
+  huc8 <- getHucs("WBDHU8",fwsRefuge)
+  huc8Data <- createSiteObject(huc8,userInput$NWIS,userInput$WQP)
+  #write data to specified output folder
+  write.csv(huc8Data@availableWqpData,sprintf("%s/%s_huc8AvailableWqpData.csv",
+                                                userInput$ResultFolder,dataName))
+  write.csv(huc8Data@availableNwisData,sprintf("%s/%s_huc8AvailableNwisData.csv",
+                                                 userInput$ResultFolder,dataName))
+}else{
+  huc8 <- NULL
+  huc8Data <- NULL
+}
+
+#Get intersecting huc10 data and relavant NWIS and WQP data
+if(userInput$HUC10){
+  huc10 <- getHucs("WBDHU10",fwsRefuge)
+  huc10Data <- createSiteObject(huc10,userInput$NWIS,userInput$WQP)
+  #write data to specified output folder
+  write.csv(huc10Data@availableWqpData,sprintf("%s/%s_huc10AvailableWqpData.csv",
+                                                userInput$ResultFolder,dataName))
+  write.csv(huc10Data@availableNwisData,sprintf("%s/%s_huc10AvailableNwisData.csv",
+                                                 userInput$ResultFolder,dataName))
+}else{
+  huc10 <- NULL
+  huc10Data <- NULL
+}
+
+# Get the current parameter lookup table
+paramLookup <- read.xlsx("Data/paramLookup.xlsx")
+paramLookup$parm_cd <- str_pad(paramLookup$parm_cd, 5, side="left", pad="0")
+
+# get the state limits table
+limLookup <- read.xlsx("Data/limitLookup.xlsx")
+limLookup$PCODE <- str_pad(limLookup$PCODE, 5, side="left", pad="0")
 
 ```
 
@@ -53,31 +82,13 @@ This report presents data downloaded on `r Sys.Date()` from the USGS and EPA hyd
 
 
 
+# `r unique(fwsRefuge$ORGNAME)`
+
 ## Refuge Boundaries and Associated Hydrologic Units
 
-## `r unique(orgname)`
-##`r hey`
-##The refuge intersects `r nrow(huc8@baseData)` HUC8 (`r unique(huc8$NAME)`) and `r nrow(huc10)` HUC10 (`r unique(huc10$NAME)`) units.  
+The refuge intersects `r nrow(huc8)` HUC8 (`r unique(huc8$NAME)`) and `r nrow(huc10)` HUC10 (`r unique(huc10$NAME)`) units.  
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
-
-hucPlot <- generatePlot(siteData)
+hucPlot <- generatePlot(fwsRefuge,huc8,huc10)
 hucPlot
-
-#write.csv(huc8AvailWqpData,sprintf("%s/%s_huc8AvailableWqpData.csv",userInput$ResultFolder, dataName))
-#write.csv(huc10AvailWqpData,sprintf("%s/%s_huc10AvailableWqpData.csv",userInput$ResultFolder, dataName))
-
-#write.csv(huc8AvailNwisData,sprintf("%s/%s_huc8AvailableNwisData.csv",userInput$ResultFolder, dataName))
-#write.csv(huc10AvailNwisData,sprintf("%s/%s_huc10AvailableNwisData.csv",userInput$ResultFolder, dataName))
-
-
 ```
-
-
-
-
-
-
-
-
-
