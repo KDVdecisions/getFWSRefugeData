@@ -48,22 +48,24 @@ createSiteObject <- function(baseData, NWIS, WQP, buffer=FALSE){
 #'@param fwsRefuge: sf object containing refuge geomentry
 #'@param huc8: sf object containing intersecting huc8 geometry
 #'@param huc10: sf object containing intersecting huc10 geometry
-generatePlot <- function(fwsRefuge,huc8,huc10){
+generatePlot <- function(fwsRefuge,huc8=NULL,huc10=NULL){
   regionLeaf <- leaflet() %>%
     addProviderTiles("Esri.WorldStreetMap", group="Map") %>%
     addProviderTiles("Esri.WorldImagery", group="Image") %>%
-    addPolygons(data=as_Spatial(fwsRefuge,4269), stroke=F,fillColor="red",
-                fillOpacity=0.7,group="Refuge")
+    addPolygons(data=as_Spatial(fwsRefuge,4269), weight=1,fillColor="cyan",
+                fillOpacity=0.7,group="Refuge", label= unique(fwsRefuge$ORGNAME))
   overlayGroups <- c("Refuge")
   
   if(!is.null(huc8)){
-    regionLeaf <- addPolygons(regionLeaf, data=as_Spatial(huc8,4269),fill=F, 
-                              color="goldenrod",opacity=0.8,group="HUC8")
+    huc8 <- st_cast(huc8,"LINESTRING")
+    regionLeaf <- addPolylines(regionLeaf, data=as_Spatial(huc8,4269), color="goldenrod",
+                               opacity=0.8,group="HUC8",label=sprintf("HUC8: %s",unique(huc8$NAME)))
     overlayGroups = c(overlayGroups,"HUC8")
   }
   if(!is.null(huc10)){
-    regionLeaf <- addPolygons(regionLeaf, data=as_Spatial(huc10,4269),fillColor="white", 
-    fillOpacity=0.1, color="blue", weight=2, opacity=1, group="HUC10")
+    huc10 <- st_cast(huc10,"LINESTRING")
+    regionLeaf <- addPolylines(regionLeaf, data=as_Spatial(huc10,4269),color="blue", weight=2, 
+                               opacity=1, group="HUC10",label=sprintf("HUC10: %s",unique(huc10$NAME)))
     overlayGroups = c(overlayGroups,"HUC10")
   }
   
@@ -134,6 +136,8 @@ writeFWSCadastral <- function(dat, refugeName, resultsFolder){
 #' TODO: Lot's of testing, attempt to find way to query API with polygon rather than
 #'       bounding box to remove need to filter out excess HUCs
 getHucs <- function(hucLayer, focalSf){
+  #hucLayer="WBDHU8"
+  #focalSf = fwsRefuge
   bbox <- toString(st_bbox(focalSf))
   epsg <- st_crs(focalSf)$epsg
   
@@ -236,8 +240,8 @@ getSites <- function(source, focalSf, bufferSf=NULL, bbox, epsg){
       dplyr::select(one_of(sitesColumns)) %>%
       dplyr::mutate(InNear = "Near")
     if (nrow(inSites)>0){
-      dat <- st_intersects(nearSites,focalSf)
-      nearSites <- nearSites[!(lengths(dat) > 0), ]
+      ind <- st_intersects(nearSites,focalSf)
+      nearSites <- nearSites[!(lengths(ind) > 0), ]
       allSites <- rbind(inSites, nearSites)
       return(allSites)
     } else {
@@ -248,6 +252,26 @@ getSites <- function(source, focalSf, bufferSf=NULL, bbox, epsg){
     return(allSites)
   }
 }#getSites
+
+tidyWQP <- function(dataDf){
+  
+  dataDf <- WqpHucData
+  tmp <- dplyr::select(dataDf, one_of("MonitoringLocationIdentifier", "ActivityMediaName", "ActivityStartDate",
+                                      "CharacteristicName", "ResultMeasureValue", "ResultMeasure.MeasureUnitCode", "USGSPCode", 
+                                      "DetectionQuantitationLimitMeasure.MeasureValue", "ResultDetectionConditionText"))
+  
+  names(tmp) <- c("Station", "Media", "StartDate", "CharacteristicName", "ResultValue", "ResultUnit", 
+                  "USGSPCode", "DetectLimit", "DetectCondition")
+  attr(tmp, 'spec') <- NULL
+  tmpSiteInfo <- attr(tmp, 'siteInfo')
+  attr(tmp, 'siteInfo') <- NULL
+  tmp <- dplyr::left_join(tmp, tmpSiteInfo[,c("site_no", "dec_lat_va", "dec_lon_va")], by=c("Station"="site_no")) %>%
+    dplyr::mutate(SourceSet="HUC 8",
+                  SourceSet=ifelse(Station %in% unique(huc10WqpSites[["MonitoringLocationIdentifier"]]), "HUC 10", SourceSet),
+                  SourceSet=ifelse(Station %in% unique(fwsIntWqpSites[["MonitoringLocationIdentifier"]]), "Refuge", SourceSet),
+                  SourceSet=as.factor(SourceSet))
+  return(tmp)
+}
 
 #'reads in user input from ReportRequest.csv,ensures logical input is valid, converts char input to logical where possible
 readReportRequest <- function(){

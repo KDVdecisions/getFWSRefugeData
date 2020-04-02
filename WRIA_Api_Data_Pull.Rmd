@@ -92,3 +92,45 @@ The refuge intersects `r nrow(huc8)` HUC8 (`r unique(huc8$NAME)`) and `r nrow(hu
 hucPlot <- generatePlot(fwsRefuge,huc8,huc10)
 hucPlot
 ```
+
+
+```{r pull.summary, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+pullTable <- data.frame(Region = rep(c("Current Boundary", "HUC10", "HUC8"), each=2),
+                        Source = rep(c("NWIS", "WQP"), times=3),
+                        
+                        Sites = c(length(unique(refugeData@nwisSites$site_no)),
+                                  length(unique(refugeData@wqpSites$MonitoringLocationIdentifier)),
+                                  length(unique(huc10Data@nwisSites$site_no)),
+                                  length(unique(huc10Data@wqpSites$MonitoringLocationIdentifier)),
+                                  length(unique(huc8Data@nwisSites$site_no)),
+                                  length(unique(huc8Data@wqpSites$MonitoringLocationIdentifier))),
+                        data = c(nrow(refugeData@availableNwisData),nrow(refugeData@availableWqpData),
+                                 nrow(huc10Data@availableNwisData),nrow(huc10Data@availableWqpData),
+                                 nrow(huc8Data@availableNwisData),nrow(huc8Data@availableWqpData)))
+write.xlsx(pullTable, sprintf("%s/%s_pullTable.xlsx", userInput$ResultFolder, dataName))
+knitr::kable(pullTable)
+```
+
+
+
+```{r tidy.wqp.data, echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+# Pull huc8 data (includes all huc10 and refuge within this region)
+# huc8Data <- read.xlsx("D:/P_Water/DataPullMarkdown/Data/huc8_wqo_data.xlsx")
+WqpHucData <- readWQPdata(huc=huc8$HUC8)
+# write.xlsx(huc8Data, "D:/P_Water/DataPullMarkdown/Data/huc8_wqp_data.xlsx")
+tidyWqp <- tidyWQP(wqpHucData)
+# table(tidyWqp$SourceSet)
+wqpSorted <- sortWithCodes(dataDf=tidyWqp, lookupDf=paramLookup, source="WQP")
+
+```
+
+
+
+
+
+
+
+
+
+
+
