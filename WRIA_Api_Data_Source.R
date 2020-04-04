@@ -22,20 +22,25 @@ createSiteObject <- function(baseData, NWIS, WQP, buffer=FALSE){
     siteBuffer <- NULL
     boundingBox <- getBoundingBox(baseData, epsg=4269)
   }
+  #instantiate new SiteData object
   site <- new("SiteData")
   
   if(NWIS){
+    #obtain NWIS data
     nwisSites <- getSites(source="NWIS", focalSf=baseData, bufferSf=siteBuffer,
                          bbox=boundingBox, epsg=4269)
     availableNwisData <- whatNWISdata(siteNumber=nwisSites$site_no)
+    #assign nwis data and sites to SiteData object
     site@nwisSites <- nwisSites
     site@availableNwisData <- availableNwisData
   }
  
   if(WQP){
+    #obtain WQP data
     wqpSites <- getSites(source="WQP", focalSf=baseData, bufferSf=siteBuffer,
                         bbox=boundingBox, epsg=4269)
     availableWqpData <- whatWQPdata(siteid=wqpSites$MonitoringLocationIdentifier)
+    #assign wqp data and sites to SiteData object
     site@wqpSites <- wqpSites
     site@availableWqpData <- availableWqpData
   }
@@ -49,6 +54,7 @@ createSiteObject <- function(baseData, NWIS, WQP, buffer=FALSE){
 #'@param huc8: sf object containing intersecting huc8 geometry
 #'@param huc10: sf object containing intersecting huc10 geometry
 generatePlot <- function(fwsRefuge,huc8=NULL,huc10=NULL){
+  #create base plot containing refuge geometry
   regionLeaf <- leaflet() %>%
     addProviderTiles("Esri.WorldStreetMap", group="Map") %>%
     addProviderTiles("Esri.WorldImagery", group="Image") %>%
@@ -57,18 +63,25 @@ generatePlot <- function(fwsRefuge,huc8=NULL,huc10=NULL){
   overlayGroups <- c("Refuge")
   
   if(!is.null(huc8)){
+    #convert huc8 to a polyline (this is to ensure refuge/huc10 layers are not obfuscated)
     huc8 <- st_cast(huc8,"LINESTRING")
+    #add converted huc8 polyline to regionLeaf plot
     regionLeaf <- addPolylines(regionLeaf, data=as_Spatial(huc8,4269), color="goldenrod",
                                opacity=0.8,group="HUC8",label=sprintf("HUC8: %s",unique(huc8$NAME)))
+    #add huc8 string to overlay groups to be added to layer control
     overlayGroups = c(overlayGroups,"HUC8")
   }
   if(!is.null(huc10)){
+    #convert huc10 to polyline
     huc10 <- st_cast(huc10,"LINESTRING")
+    #add huc10 to regionLeaf
     regionLeaf <- addPolylines(regionLeaf, data=as_Spatial(huc10,4269),color="blue", weight=2, 
                                opacity=1, group="HUC10",label=sprintf("HUC10: %s",unique(huc10$NAME)))
+    #add huc10 to overlay groups
     overlayGroups = c(overlayGroups,"HUC10")
   }
   
+  #add layer control to regionLeaf
   regionLeaf <- addLayersControl(regionLeaf,baseGroups=c("Map", "Image"),
                    overlayGroups = overlayGroups,
                    options = layersControlOptions(collapsed=FALSE))
@@ -86,7 +99,7 @@ isWriteWarning <- function(warning){
   return(grepl(dirWarning, warningText, fixed=TRUE))
 }
 
-#' Write refuge data to a given location
+#' Write refuge shape file and accompanying data to a given location, creates result folder if it doesn't exist already
 #' 
 #' @param dat: sf, refuge data obtained from FWS Rest API
 #' @param refugeName: char, Name of given refuge
@@ -118,7 +131,6 @@ writeFWSCadastral <- function(dat, refugeName, resultsFolder){
       if(isWriteWarning(w)){ 
         print(sprintf("Cannot create/access '%s', please check provided path", resultsFolder))
         stop()
-        #do.call(return, list(NULL),envir = sys.frame(-4)) #return to getFWSCadastral
       }
     })
     st_write(dat, sprintf("%s/%s_ApprovedBoundary.shp", 
@@ -136,11 +148,10 @@ writeFWSCadastral <- function(dat, refugeName, resultsFolder){
 #' TODO: Lot's of testing, attempt to find way to query API with polygon rather than
 #'       bounding box to remove need to filter out excess HUCs
 getHucs <- function(hucLayer, focalSf){
-  #hucLayer="WBDHU8"
-  #focalSf = fwsRefuge
   bbox <- toString(st_bbox(focalSf))
   epsg <- st_crs(focalSf)$epsg
   
+  #obtain base url from text doc
   if(hucLayer == "WBDHU8"){
     baseUrl <- readLines("Data/Base_URL.txt")[2]
   }
@@ -148,11 +159,14 @@ getHucs <- function(hucLayer, focalSf){
     baseUrl <- readLines("Data/Base_URL.txt")[3]
   }
   
+  #append base url to include bounding box of focalSf and set appropriate input and output epsg code
   url <- param_set(baseUrl, key ="geometry", value = URLencode(bbox)) %>%
     param_set(key = "inSR", value = epsg) %>%
     param_set(key = "outSR", value = epsg)
   
+  #query rest api
   huc <- read_sf(url)
+  #filter out HUCs that do not intersect with focalSf
   huc <- dplyr::filter(huc, lengths(st_intersects(huc,focalSf))>0)
   
   return(huc)
@@ -166,19 +180,22 @@ getHucs <- function(hucLayer, focalSf){
 #' @param resultsFolder: char, path to folder in which to store obtained data
 #' TODO: Include check for time out(ie FSW servers are down)
 getFWSCadastral <- function(refugeName, approved=FALSE){
-  if(nchar(refugeName) < 1){ #generate url to query DB
+  if(nchar(refugeName) < 1){
     stop("Please provide a valid refuge name")
     return(NULL)
   }
+  #read in appropriate baseURL based on user input
   if(approved){
     baseUrl <- readLines("Data/base_URL.txt")[4]
   }else{
     baseUrl <- readLines("Data/base_URL.txt")[1]
   }
-  
+  #append url to include query info
   url <- param_set(baseUrl, key = "where", value = sprintf("ORGNAME+LIKE+'%s%%25'",gsub(" ","+",refugeName))) %>%
     param_set(key = "outSR", value = 4269)
-  dat <- read_sf(url)    #query db and read into sf obj
+  #query rest api
+  dat <- read_sf(url)    
+  #if no data is returned
   if(nrow(dat)==0| is.null(dat)){
     stop("No data returned for this request, please check provided refuge name")
   }
@@ -213,35 +230,36 @@ getBoundingBox <- function(sfData, epsg, addBuffer=FALSE, distBuffer=NA){
 #' @param bufferSf: Shapefile containing a buffer around the focal sf in which to look for test sites
 #' @param bbox: Bounding box of buffer or focalSf if buffer is null
 #' @param epsg: CRS used by focalSf
+#' @author: Dr. Ashton Drew, Eliot Dixon
 getSites <- function(source, focalSf, bufferSf=NULL, bbox, epsg){
-  # Identify NWIS sites within boundary
   latColName <- "LatitudeMeasure"
   lngColName <- "LongitudeMeasure"
   idColName <- "MonitoringLocationIdentifier"
+  #identify NWIS or WQP sites within boundary
   if(source=="NWIS"){
-    sitesDf <- whatNWISsites(bBox=round(bbox, 3))
+    sitesDf <- whatNWISsites(bBox=round(bbox, 4))
     latColName <- "dec_lat_va"
     lngColName <- "dec_long_va"
     idColName <- "site_no"
   } else {
-    sitesDf <- whatWQPsites(bBox=round(bbox, 3))
+    sitesDf <- whatWQPsites(bBox=round(bbox, 4))
   }
   # convert located sites to spatial simple features
   sitesSf <- st_as_sf(sitesDf, coords=c(lngColName, latColName), crs=epsg)
   sitesColumns <- names(sitesSf)
   # Identify all sites within focal area and label
-  inSites <- st_intersection(sitesSf, focalSf) %>%
+  inSites <- st_intersection(sitesSf, st_buffer(focalSf,0)) %>%
     dplyr::select(one_of(sitesColumns)) %>%
     dplyr::mutate(InNear = "In")
   # Identify sites near but outside focal area
   if (!is.null(bufferSf)){
-    
+    #Assign all sites within buffer to nearSites
     nearSites <- st_intersection(sitesSf, bufferSf) %>%
       dplyr::select(one_of(sitesColumns)) %>%
       dplyr::mutate(InNear = "Near")
     if (nrow(inSites)>0){
-      ind <- st_intersects(nearSites,focalSf)
-      nearSites <- nearSites[!(lengths(ind) > 0), ]
+      #filter nearSites so it only contains sites that occur within the buffer and not within focalSf
+      nearSites <- dplyr::filter(nearSites, !lengths(st_intersects(nearSites,focalSf))>0)
       allSites <- rbind(inSites, nearSites)
       return(allSites)
     } else {
@@ -251,15 +269,14 @@ getSites <- function(source, focalSf, bufferSf=NULL, bbox, epsg){
     allSites <- inSites
     return(allSites)
   }
+
 }#getSites
 
 tidyWQP <- function(dataDf){
-  
   dataDf <- WqpHucData
   tmp <- dplyr::select(dataDf, one_of("MonitoringLocationIdentifier", "ActivityMediaName", "ActivityStartDate",
                                       "CharacteristicName", "ResultMeasureValue", "ResultMeasure.MeasureUnitCode", "USGSPCode", 
                                       "DetectionQuantitationLimitMeasure.MeasureValue", "ResultDetectionConditionText"))
-  
   names(tmp) <- c("Station", "Media", "StartDate", "CharacteristicName", "ResultValue", "ResultUnit", 
                   "USGSPCode", "DetectLimit", "DetectCondition")
   attr(tmp, 'spec') <- NULL
@@ -271,11 +288,13 @@ tidyWQP <- function(dataDf){
                   SourceSet=ifelse(Station %in% unique(fwsIntWqpSites[["MonitoringLocationIdentifier"]]), "Refuge", SourceSet),
                   SourceSet=as.factor(SourceSet))
   return(tmp)
-}
+}#tidyWQP
 
 #'reads in user input from ReportRequest.csv,ensures logical input is valid, converts char input to logical where possible
 readReportRequest <- function(){
+  #read in user input
   input <- read.csv("data/ReportRequest.csv",stringsAsFactors = FALSE)
+  #for input 2:7 (logical input) convert from type char to logical, ensure input is valid
   for(i in 2:7){
     input[i] <- tolower(input[i])
     if(input[i] == "yes"){
@@ -288,6 +307,7 @@ readReportRequest <- function(){
       stop(sprintf("invalid input in '%s' field, please check ReportRequest.csv in Data folder",names(input)[i]))
     }
   }
+  #ensure either input or approved is selected, not both and not neither
   if(!input$Approved& !input$Interest){
     stop("Invalid input, either interest field or approved field must be 'yes', please check ReportRequest.csv in Data folder")
   }else if(input$Approved& input$Interest){
